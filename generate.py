@@ -3,7 +3,8 @@
 Alle Daten sind synthetisch (erfundene Firmen, Namen, Zahlen). Deterministisch
 über random.seed(42), damit Regenerieren identische Dateien liefert.
 
-Run: python3 generate.py  ->  schreibt ./uebungsordner/ neu.
+Run: uv run --with openpyxl generate.py  ->  schreibt ./uebungsordner/ neu.
+(Die Excel-Datei in excel-analyse/ braucht openpyxl.)
 """
 
 from __future__ import annotations
@@ -76,6 +77,45 @@ def auswertung() -> None:
             w.writerow([firma, random.choice(orte), random.choice(["2019", "2021", "2022", "2024"]), random.choice(betreuer)])
 
 
+def excel_analyse() -> None:
+    """Dieselben Daten wie auswertung/ als eine Excel-Datei mit zwei Blättern.
+
+    Liest die fertigen CSV-Dateien und zieht keine Zufallszahlen, damit die
+    übrigen Ordner unverändert bleiben.
+    """
+    from datetime import datetime
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    quelle = ROOT / "auswertung"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Umsätze"
+    ws.append(["Monat", "Firma", "Produkt", "Umsatz (EUR)"])
+    with (quelle / "umsatz_2025.csv").open(encoding="utf-8") as fh:
+        for zeile in csv.DictReader(fh):
+            ws.append([zeile["monat"], zeile["firma"], zeile["produkt"], float(zeile["umsatz_eur"])])
+    ws2 = wb.create_sheet("Kunden")
+    ws2.append(["Firma", "Ort", "Kunde seit", "Betreuung"])
+    with (quelle / "kundenliste.csv").open(encoding="utf-8") as fh:
+        for zeile in csv.DictReader(fh):
+            ws2.append([zeile["firma"], zeile["ort"], int(zeile["kunde_seit"]), zeile["betreuung"]])
+    for blatt, breiten in ((ws, [10, 26, 18, 14]), (ws2, [26, 14, 11, 14])):
+        for zelle in blatt[1]:
+            zelle.font = Font(bold=True)
+        for spalte, breite in zip("ABCD", breiten):
+            blatt.column_dimensions[spalte].width = breite
+        blatt.freeze_panes = "A2"
+    for zelle in ws["D"][1:]:
+        zelle.number_format = "#,##0.00"
+    wb.properties.creator = "claude-grundlagen-material"
+    wb.properties.created = wb.properties.modified = datetime(2026, 11, 11)
+    ziel = ROOT / "excel-analyse"
+    ziel.mkdir(parents=True, exist_ok=True)
+    wb.save(ziel / "vertrieb_2025.xlsx")
+
+
 def ablage_chaos() -> None:
     d = ROOT / "ablage-chaos"
     namen = [
@@ -100,8 +140,9 @@ def main() -> None:
     projekt()
     auswertung()
     ablage_chaos()
+    excel_analyse()
     original = ROOT / "_original"
-    for ordner in ["posteingang", "projekt-fruehlingsfest", "auswertung", "ablage-chaos"]:
+    for ordner in ["posteingang", "projekt-fruehlingsfest", "auswertung", "ablage-chaos", "excel-analyse"]:
         shutil.copytree(ROOT / ordner, original / ordner)
     n = sum(1 for p in ROOT.rglob("*") if p.is_file())
     print(f"uebungsordner/ erzeugt: {n} Dateien (inkl. _original-Reset-Kopie).")
